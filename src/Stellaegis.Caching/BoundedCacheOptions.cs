@@ -11,6 +11,12 @@ namespace Stellaegis.Caching;
 public sealed class BoundedCacheOptions
 {
     /// <summary>
+    /// The default configuration section holding one child section per cache, keyed by cache name:
+    /// <c>Stellaegis:Caching:&lt;name&gt;</c>.
+    /// </summary>
+    public const string SectionName = "Stellaegis:Caching";
+
+    /// <summary>
     /// Hard entry-count bound. When <see langword="null"/> (the default) the bound is derived at
     /// construction from available memory (see <see cref="MemoryFraction"/>,
     /// <see cref="EstimatedEntryBytes"/>, <see cref="MinEntries"/>, <see cref="MaxEntries"/>).
