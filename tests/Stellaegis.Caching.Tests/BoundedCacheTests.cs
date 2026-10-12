@@ -39,6 +39,27 @@ public sealed class BoundedCacheTests
     }
 
     [Fact]
+    public void Bound_too_small_for_its_compaction_percentage_is_refused()
+    {
+        var act = () => new BoundedCache("too-small", new BoundedCacheOptions { SizeLimit = 19 });
+
+        var exception = Assert.Throws<ArgumentException>(act);
+        Assert.Equal("options", exception.ParamName);
+
+        using var smallest = new BoundedCache("smallest", new BoundedCacheOptions { SizeLimit = 20 });
+        Assert.Equal(20, smallest.SizeLimit);
+    }
+
+    [Fact]
+    public void Small_bound_is_accepted_with_a_matching_compaction_percentage()
+    {
+        using var cache = new BoundedCache(
+            "small", new BoundedCacheOptions { SizeLimit = 10, CompactionPercentage = 0.1 });
+
+        Assert.Equal(10, cache.SizeLimit);
+    }
+
+    [Fact]
     public void Auto_derived_size_limit_stays_within_the_clamp()
     {
         var options = new BoundedCacheOptions { SizeLimit = null, MinEntries = 2000, MaxEntries = 50_000 };

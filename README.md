@@ -112,8 +112,11 @@ The derived bound is an estimate: the library does not measure the actual size o
 the effective bound from `BoundedCache.SizeLimit`.
 
 A compaction removes `SizeLimit × CompactionPercentage` entries, rounded down. Below one entry, it
-removes nothing but expired entries, and a full cache keeps refusing writes until some of its
-entries expire or are invalidated. With the default percentage, keep `SizeLimit` at 20 or more.
+would remove nothing but expired entries, and a full cache would keep refusing writes. The
+constructor therefore refuses such a combination with an `ArgumentException`. With the default
+percentage, `SizeLimit` must be 20 or more; for a smaller cache, raise `CompactionPercentage` —
+`0.1` for a bound of 10. A cache registered with dependency injection is created when it is first
+resolved, so the exception is thrown there rather than at startup.
 
 ## Registering caches with dependency injection
 

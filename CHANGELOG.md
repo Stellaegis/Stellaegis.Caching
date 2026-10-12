@@ -13,7 +13,8 @@ First release as a standalone library.
 
 - `BoundedCache`, an in-memory cache bounded by entry count, with a backstop time-to-live, change-token
   invalidation, and metrics on the `Stellaegis.Caching` meter.
-- `BoundedCacheOptions`, which sets the bound explicitly or derives it from available memory.
+- `BoundedCacheOptions`, which sets the bound explicitly or derives it from available memory. A bound
+  and a compaction percentage that would remove no entry per compaction are refused.
 - `CacheSegmentInvalidator`, which evicts every entry linked to a segment at once.
 - `AddStellaegisBoundedCache`, which registers a cache as a keyed singleton, configured either from its
   entry of the section `Stellaegis:Caching` or from a factory.

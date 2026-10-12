@@ -12,9 +12,10 @@ namespace Stellaegis.Caching;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Eviction is automatic: once the entry count exceeds the bound, the underlying
-/// <see cref="MemoryCache"/> compacts — removing expired entries first, then by cache-item priority,
-/// then least-recently-used. This is an approximate LRU, adequate for a backstop bound.
+/// The entry count never exceeds the bound. A write into a full cache is dropped and counted as an
+/// eviction, and the underlying <see cref="MemoryCache"/> starts a background compaction that removes
+/// <see cref="BoundedCacheOptions.CompactionPercentage"/> of the entries — expired entries first, then
+/// least-recently-used. This is an approximate LRU, adequate for a backstop bound.
 /// </para>
 /// <para>
 /// Freshness is not the cache's job: entries are invalidated on demand through the change tokens
@@ -41,11 +42,22 @@ public sealed class BoundedCache : IDisposable
     /// <summary>Creates a bounded cache named <paramref name="name"/> from <paramref name="options"/>.</summary>
     /// <param name="name">Identifier used as the <c>cache.name</c> metric tag.</param>
     /// <param name="options">Size, TTL, and auto-sizing configuration.</param>
+    /// <exception cref="ArgumentException">
+    /// The effective bound and <see cref="BoundedCacheOptions.CompactionPercentage"/> would remove no entry
+    /// per compaction, which would leave a full cache refusing writes until its entries expire.
+    /// </exception>
     public BoundedCache(string name, BoundedCacheOptions options)
     {
         Name = Guard.NotWhiteSpace(name);
         _options = Guard.NotNull(options);
         SizeLimit = ResolveSizeLimit(options);
+
+        // MemoryCache removes (int)(count × percentage) entries per compaction: below one, it removes
+        // only expired entries, and a full cache stays full.
+        var removedPerCompaction = (long)(SizeLimit * options.CompactionPercentage);
+        Guard.Satisfies(options, _ => removedPerCompaction >= 1,
+            $"Cache '{Name}': a SizeLimit of {SizeLimit} with a CompactionPercentage of {options.CompactionPercentage} "
+            + "removes no entry per compaction. Raise one of them.");
 
         _cache = new MemoryCache(new MemoryCacheOptions
         {
@@ -61,13 +73,13 @@ public sealed class BoundedCache : IDisposable
             description: "Number of entries currently held by the bounded cache.");
         _meter.CreateObservableCounter(
             "stellaegis.cache.hits", ObserveHits, unit: "{hit}",
-            description: "Total cache hits since process start.");
+            description: "Total cache hits since the cache was created.");
         _meter.CreateObservableCounter(
             "stellaegis.cache.misses", ObserveMisses, unit: "{miss}",
-            description: "Total cache misses since process start.");
+            description: "Total cache misses since the cache was created.");
         _meter.CreateObservableCounter(
             "stellaegis.cache.evictions", ObserveEvictions, unit: "{eviction}",
-            description: "Total entries evicted for capacity since process start.");
+            description: "Total entries evicted for capacity, writes dropped by a full cache included, since the cache was created.");
     }
 
     /// <summary>The cache name, used as the <c>cache.name</c> metric tag.</summary>
@@ -76,7 +88,7 @@ public sealed class BoundedCache : IDisposable
     /// <summary>The effective entry bound in force (explicit or auto-derived).</summary>
     public long SizeLimit { get; }
 
-    /// <summary>Number of entries evicted for capacity since construction.</summary>
+    /// <summary>Number of entries evicted for capacity since construction, writes dropped by a full cache included.</summary>
     public long EvictionCount => Interlocked.Read(ref _evictions);
 
     /// <summary>Current underlying statistics (entry count, hits, misses), or <see langword="null"/>.</summary>

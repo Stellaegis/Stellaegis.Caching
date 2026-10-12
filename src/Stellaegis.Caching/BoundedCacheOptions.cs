@@ -29,7 +29,10 @@ public sealed class BoundedCacheOptions
     /// </summary>
     public TimeSpan Expiration { get; init; } = TimeSpan.FromMinutes(5);
 
-    /// <summary>Fraction of entries removed per overflow compaction pass, in the range (0, 1).</summary>
+    /// <summary>
+    /// Fraction of entries removed per overflow compaction pass, in the range (0, 1]. Combined with the
+    /// effective bound, it must remove at least one entry: with the default 0.05, a bound of 20 or more.
+    /// </summary>
     public double CompactionPercentage { get; init; } = 0.05;
 
     /// <summary>
