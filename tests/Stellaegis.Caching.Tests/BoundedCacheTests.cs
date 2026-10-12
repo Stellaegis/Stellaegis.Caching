@@ -1,5 +1,4 @@
 using System.Diagnostics.Metrics;
-using FluentAssertions;
 using Microsoft.Extensions.Primitives;
 using Xunit;
 
@@ -27,8 +26,8 @@ public sealed class BoundedCacheTests
             settled => settled <= limit,
             TimeSpan.FromSeconds(5));
 
-        count.Should().BeLessThanOrEqualTo(limit);
-        cache.EvictionCount.Should().BeGreaterThan(0);
+        Assert.InRange(count, 0, limit);
+        Assert.True(cache.EvictionCount > 0);
     }
 
     [Fact]
@@ -36,7 +35,7 @@ public sealed class BoundedCacheTests
     {
         using var cache = new BoundedCache("explicit-size", new BoundedCacheOptions { SizeLimit = 4242 });
 
-        cache.SizeLimit.Should().Be(4242);
+        Assert.Equal(4242, cache.SizeLimit);
     }
 
     [Fact]
@@ -45,7 +44,7 @@ public sealed class BoundedCacheTests
         var options = new BoundedCacheOptions { SizeLimit = null, MinEntries = 2000, MaxEntries = 50_000 };
         using var cache = new BoundedCache("auto-size", options);
 
-        cache.SizeLimit.Should().BeInRange(options.MinEntries, options.MaxEntries);
+        Assert.InRange(cache.SizeLimit, options.MinEntries, options.MaxEntries);
     }
 
     [Fact]
@@ -57,12 +56,12 @@ public sealed class BoundedCacheTests
 
         cache.Set("a", 1, new[] { token });
         cache.Set("b", 2, new[] { token });
-        cache.TryGet<int>("a", out _).Should().BeTrue();
+        Assert.True(cache.TryGet<int>("a", out _));
 
         segment.Cancel(); // CacheSegmentInvalidator.Invalidate(segment) does exactly this
 
-        cache.TryGet<int>("a", out _).Should().BeFalse();
-        cache.TryGet<int>("b", out _).Should().BeFalse();
+        Assert.False(cache.TryGet<int>("a", out _));
+        Assert.False(cache.TryGet<int>("b", out _));
     }
 
     [Fact]
@@ -72,7 +71,7 @@ public sealed class BoundedCacheTests
 
         cache.Set("nope", 1, ttl: TimeSpan.FromSeconds(-1));
 
-        cache.TryGet<int>("nope", out _).Should().BeFalse();
+        Assert.False(cache.TryGet<int>("nope", out _));
     }
 
     [Fact]
@@ -86,9 +85,9 @@ public sealed class BoundedCacheTests
 
         await Task.Delay(TimeSpan.FromMilliseconds(250));
 
-        cache.TryGet<int>("infinite", out var infinite).Should().BeTrue();
-        infinite.Should().Be(1);
-        cache.TryGet<int>("backstopped", out _).Should().BeFalse();
+        Assert.True(cache.TryGet<int>("infinite", out var infinite));
+        Assert.Equal(1, infinite);
+        Assert.False(cache.TryGet<int>("backstopped", out _));
     }
 
     [Fact]
@@ -121,13 +120,13 @@ public sealed class BoundedCacheTests
         cache.TryGet<int>("miss", out _); // miss
         listener.RecordObservableInstruments();
 
-        seen.Should().Contain(new[]
+        Assert.Superset(new HashSet<string>
         {
             "stellaegis.cache.entries",
             "stellaegis.cache.hits",
             "stellaegis.cache.misses",
             "stellaegis.cache.evictions",
-        });
+        }, seen.ToHashSet());
     }
 
     [Fact]
@@ -141,8 +140,8 @@ public sealed class BoundedCacheTests
         for (var i = 0; i < 500; i++)
             filled.Set($"key:{i}", i);
 
-        other.TryGet<int>("kept", out var kept).Should().BeTrue();
-        kept.Should().Be(1);
+        Assert.True(other.TryGet<int>("kept", out var kept));
+        Assert.Equal(1, kept);
     }
 
     private static async Task<T> PollAsync<T>(Func<T> read, Func<T, bool> settled, TimeSpan timeout)

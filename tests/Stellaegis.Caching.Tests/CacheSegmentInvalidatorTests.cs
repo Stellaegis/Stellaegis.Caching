@@ -1,4 +1,3 @@
-using FluentAssertions;
 using Xunit;
 
 namespace Stellaegis.Caching.Tests;
@@ -21,10 +20,10 @@ public sealed class CacheSegmentInvalidatorTests
 
         invalidator.Invalidate("seg-1");
 
-        cache.TryGet<int>("a", out _).Should().BeFalse();
-        cache.TryGet<int>("b", out _).Should().BeFalse();
-        cache.TryGet<int>("c", out var kept).Should().BeTrue();
-        kept.Should().Be(3);
+        Assert.False(cache.TryGet<int>("a", out _));
+        Assert.False(cache.TryGet<int>("b", out _));
+        Assert.True(cache.TryGet<int>("c", out var kept));
+        Assert.Equal(3, kept);
     }
 
     [Fact]
@@ -32,8 +31,8 @@ public sealed class CacheSegmentInvalidatorTests
     {
         var invalidator = new CacheSegmentInvalidator();
 
-        var act = () => invalidator.Invalidate("never-seen");
+        var exception = Record.Exception(() => invalidator.Invalidate("never-seen"));
 
-        act.Should().NotThrow();
+        Assert.Null(exception);
     }
 }
