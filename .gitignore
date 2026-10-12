@@ -37,3 +37,10 @@ desktop.ini
 # Scratch files and throwaway experiments. The folder exists so there is somewhere to put one
 # without wondering whether it should be versioned: by construction, the answer is no.
 _local/
+
+# ── Build output ───────────────────────────────────────────────────────────────
+# Written by every `dotnet build`, next to each project. Anchored to the projects under src/ and tests/.
+/src/*/bin/
+/src/*/obj/
+/tests/*/bin/
+/tests/*/obj/
