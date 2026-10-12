@@ -44,3 +44,7 @@ _local/
 /src/*/obj/
 /tests/*/bin/
 /tests/*/obj/
+
+# ── Packages ───────────────────────────────────────────────────────────────────
+# Written by `dotnet pack` (Directory.Build.props, PackageOutputPath). Published from CI, never committed.
+/artifacts/

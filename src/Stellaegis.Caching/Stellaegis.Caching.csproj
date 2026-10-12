@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Stellaegis.Caching</RootNamespace>
     <PackageId>Stellaegis.Caching</PackageId>
-    <Description>Stellaegis caching primitives: a size-bounded in-memory cache with a long backstop TTL, segment invalidation support, and built-in metrics.</Description>
+    <Description>A size-bounded in-memory cache with a long backstop TTL, segment invalidation, and built-in metrics.</Description>
     <PackageTags>stellaegis;caching;memorycache;bounded;lru</PackageTags>
   </PropertyGroup>
 

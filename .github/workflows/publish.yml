@@ -1,0 +1,58 @@
+name: Publish to NuGet
+
+# Publishing is driven by a semver tag matching the version in Directory.Build.props: update
+# <VersionPrefix> and CHANGELOG.md, commit, then push the tag (e.g. v1.0.0).
+#
+# Authentication is NuGet Trusted Publishing: the job exchanges GitHub's OIDC token for a
+# short-lived API key, so no key is stored in this repository. The trust policy on nuget.org names
+# this repository and this file, publish.yml — renaming the file breaks publishing.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+  id-token: write   # required to request the OIDC token
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # The tag and the packages must carry the same version.
+      - name: Check the tag against the version
+        run: |
+          version=$(sed -n 's:.*<VersionPrefix>\(.*\)</VersionPrefix>.*:\1:p' Directory.Build.props)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match VersionPrefix $version in Directory.Build.props."
+            exit 1
+          fi
+
+      # Quality gate: the whole solution must build and its tests pass before anything is pushed.
+      - name: Test
+        run: dotnet test Stellaegis.Caching.slnx -c Release
+
+      - name: Pack
+        run: dotnet pack Stellaegis.Caching.slnx -c Release
+
+      - name: Log in to NuGet
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      # Pushes every package, with its symbols. Already-published versions are skipped.
+      - name: Push to NuGet
+        run: >
+          dotnet nuget push "artifacts/packages/*.nupkg"
+          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
