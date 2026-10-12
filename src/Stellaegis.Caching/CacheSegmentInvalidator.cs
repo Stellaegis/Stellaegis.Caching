@@ -5,13 +5,13 @@ namespace Stellaegis.Caching;
 
 /// <summary>
 /// Manages cache invalidation tokens grouped by <em>segment</em> — an arbitrary string key shared by a
-/// set of cache entries (e.g. a tenant, a user, a vault path). Cancelling a segment's token evicts every
-/// entry linked to it at once.
+/// set of cache entries (e.g. a user, a document, a configuration key). Cancelling a segment's token
+/// evicts every entry linked to it at once.
 /// </summary>
 /// <remarks>
 /// Attach the token to a <see cref="BoundedCache"/> entry through the change-token parameter of
-/// <see cref="BoundedCache.Set{T}"/>. This is the mechanism; the policy — which event invalidates which
-/// segment — belongs to the consuming domain (typically a backplane subscription).
+/// <see cref="BoundedCache.Set{T}"/>. This is the mechanism; the policy — which change invalidates which
+/// segment — belongs to the caller, typically a handler for a change notification.
 /// </remarks>
 public sealed class CacheSegmentInvalidator
 {

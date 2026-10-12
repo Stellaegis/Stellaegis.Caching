@@ -18,7 +18,7 @@ namespace Stellaegis.Caching;
 /// </para>
 /// <para>
 /// Freshness is not the cache's job: entries are invalidated on demand through the change tokens
-/// passed to <see cref="Set{T}"/> (e.g. wired to a backplane event). The TTL only bounds the blast
+/// passed to <see cref="Set{T}"/> (e.g. cancelled when a change notification arrives). The TTL only bounds the blast
 /// radius of a missed invalidation, so it can be long once the size is bounded.
 /// </para>
 /// <para>

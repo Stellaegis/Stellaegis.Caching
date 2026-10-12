@@ -5,7 +5,7 @@ namespace Stellaegis.Caching;
 /// auto-sizing parameters used when <see cref="SizeLimit"/> is left unset.
 /// </summary>
 /// <remarks>
-/// Correctness is expected to be carried by explicit invalidation (e.g. a backplane event), not by
+/// Correctness is expected to be carried by explicit invalidation (e.g. a change notification), not by
 /// expiry — the TTL is only a backstop, so it can be long as long as the entry count stays bounded.
 /// </remarks>
 public sealed class BoundedCacheOptions

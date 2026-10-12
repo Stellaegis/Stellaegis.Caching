@@ -59,7 +59,7 @@ public sealed class BoundedCacheTests
         cache.Set("b", 2, new[] { token });
         cache.TryGet<int>("a", out _).Should().BeTrue();
 
-        segment.Cancel(); // the backplane's Invalidate(segment) does exactly this
+        segment.Cancel(); // CacheSegmentInvalidator.Invalidate(segment) does exactly this
 
         cache.TryGet<int>("a", out _).Should().BeFalse();
         cache.TryGet<int>("b", out _).Should().BeFalse();
@@ -134,12 +134,12 @@ public sealed class BoundedCacheTests
     public void Keyed_caches_do_not_share_a_bound()
     {
         // Two independently-bounded caches: filling one must not evict the other's entries.
-        using var authz = new BoundedCache("authorization", new BoundedCacheOptions { SizeLimit = 50 });
+        using var filled = new BoundedCache("filled", new BoundedCacheOptions { SizeLimit = 50 });
         using var other = new BoundedCache("other", new BoundedCacheOptions { SizeLimit = 50 });
 
         other.Set("kept", 1);
         for (var i = 0; i < 500; i++)
-            authz.Set($"key:{i}", i);
+            filled.Set($"key:{i}", i);
 
         other.TryGet<int>("kept", out var kept).Should().BeTrue();
         kept.Should().Be(1);

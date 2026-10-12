@@ -11,7 +11,7 @@ public static class ServiceCollectionExtensions
     /// Resolve it with <c>[FromKeyedServices(serviceKey)]</c> or <c>GetRequiredKeyedService</c>.
     /// </summary>
     /// <remarks>
-    /// The keyed registration lets several dedicated caches (e.g. authorization, vault) coexist in a
+    /// The keyed registration lets several dedicated caches (e.g. one for permissions, one for configuration) coexist in a
     /// single process — each with its own bound, TTL, and metrics — without sharing the application's
     /// unbounded <c>IMemoryCache</c>. The instance is disposed with the container.
     /// </remarks>
