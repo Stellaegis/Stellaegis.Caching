@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
     <PackageReference Include="Stellaegis.Primitives" />
+    <PackageReference Include="Stellaegis.Primitives.Hosting" />
   </ItemGroup>
 
   <ItemGroup>

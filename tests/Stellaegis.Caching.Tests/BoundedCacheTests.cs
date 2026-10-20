@@ -165,6 +165,72 @@ public sealed class BoundedCacheTests
         Assert.Equal(1, kept);
     }
 
+    // A key read as another type than it holds is two consumers sharing it: a failure, never a miss.
+    [Fact]
+    public void Reading_a_key_as_another_type_fails_rather_than_misses()
+    {
+        using var cache = new BoundedCache("typed", new BoundedCacheOptions());
+        cache.Set("k", 1);
+
+        var exception = Assert.Throws<InvalidOperationException>(() => cache.TryGet<string>("k", out _));
+
+        Assert.Contains("holds a Int32, and a String is read", exception.Message);
+        Assert.True(cache.TryGet<int>("k", out var kept));
+        Assert.Equal(1, kept);
+        Assert.False(cache.TryGet<string>("absent", out _));
+    }
+
+    [Fact]
+    public void A_stored_null_reads_as_absent()
+    {
+        using var cache = new BoundedCache("nulls", new BoundedCacheOptions());
+        cache.Set<string?>("k", null);
+
+        Assert.False(cache.TryGet<string>("k", out _));
+    }
+
+    [Fact]
+    public void Caches_share_one_meter_and_a_disposed_cache_stops_reporting()
+    {
+        var published = new HashSet<string>();
+        var observed = new List<(string Instrument, string Cache)>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (instrument.Meter.Name == BoundedCache.MeterName)
+                {
+                    published.Add(instrument.Name);
+                    l.EnableMeasurementEvents(instrument);
+                }
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((instrument, _, tags, _) =>
+        {
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "cache.name" && tag.Value is string name)
+                    observed.Add((instrument.Name, name));
+            }
+        });
+        listener.Start();
+
+        var first = new BoundedCache("shared-meter-first", new BoundedCacheOptions { SizeLimit = 100 });
+        using var second = new BoundedCache("shared-meter-second", new BoundedCacheOptions { SizeLimit = 100 });
+        listener.RecordObservableInstruments();
+
+        Assert.Equal(4, published.Count);
+        Assert.Contains(("stellaegis.cache.entries", "shared-meter-first"), observed);
+        Assert.Contains(("stellaegis.cache.entries", "shared-meter-second"), observed);
+
+        first.Dispose();
+        observed.Clear();
+        listener.RecordObservableInstruments();
+
+        Assert.DoesNotContain(observed, o => o.Cache == "shared-meter-first");
+        Assert.Contains(("stellaegis.cache.hits", "shared-meter-second"), observed);
+    }
+
     private static async Task<T> PollAsync<T>(Func<T> read, Func<T, bool> settled, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;

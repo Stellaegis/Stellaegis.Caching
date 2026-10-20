@@ -39,7 +39,15 @@ if (cache.TryGet<Document>("document:42", out var cached))
 cache.Remove("document:42");
 ```
 
-`TryGet<T>` returns `false` when the key is absent, and also when the stored value is not a `T`.
+`TryGet<T>` returns `false` when the key is absent, a stored `null` included. A key that holds a value of another
+type than the one read is a key shared by two consumers: `TryGet<T>` then fails, naming the key and the two types,
+rather than answering a miss that would hide the defect.
+
+The cache knows nothing of compartments: a key is a string. An application with several compartments puts the
+compartment in the key from the first day, with `Space.ToSegment()` from `Stellaegis.Primitives` —
+`$"{space.ToSegment()}:sku:{sku}"` —, and so does an application with a single one: the day it takes a second
+compartment, a key without it would be shared between the two, without an error. The library checks nothing here;
+it is the consumer's key.
 
 The bound counts entries, not bytes. This keeps the bound cheap to enforce and easy to predict, but
 it assumes values of comparable size. If one cache holds values of very different sizes, give it a
@@ -112,11 +120,13 @@ The derived bound is an estimate: the library does not measure the actual size o
 the effective bound from `BoundedCache.SizeLimit`.
 
 A compaction removes `SizeLimit × CompactionPercentage` entries, rounded down. Below one entry, it
-would remove nothing but expired entries, and a full cache would keep refusing writes. The
-constructor therefore refuses such a combination with an `ArgumentException`. With the default
-percentage, `SizeLimit` must be 20 or more; for a smaller cache, raise `CompactionPercentage` —
-`0.1` for a bound of 10. A cache registered with dependency injection is created when it is first
-resolved, so the exception is thrown there rather than at startup.
+would remove nothing but expired entries, and a full cache would keep refusing writes. The options
+therefore refuse such a combination, with every other setting that cannot work — a bound below 1, a
+percentage out of its range, a clamp upside down —: `BoundedCacheOptions.FindError()` names the first
+one, and the constructor throws an `ArgumentException` on it. With the default percentage, `SizeLimit`
+must be 20 or more; for a smaller cache, raise `CompactionPercentage` — `0.1` for a bound of 10. A cache
+registered from configuration is validated when the host starts (see below), so a host that would run a
+cache that cannot work never starts.
 
 ## Registering caches with dependency injection
 
@@ -145,9 +155,15 @@ A cache with no entry in the section uses the default options. Pass `sectionName
 section. Because the key is also a configuration path segment, a key that contains `:` points to a
 nested section.
 
+The options of every cache registered this way are validated when the host starts, by what
+`BoundedCacheOptions.FindError()` says: a host whose cache would remove no entry per compaction fails to
+start, naming the cache. This follows `IValidatableOptions` of `Stellaegis.Primitives.Hosting`; the options
+being named, one per cache, the library registers the validator itself.
+
 The options are .NET named options, registered under the cache's key. To adjust them from code after
 the configuration has been read, use `services.PostConfigure<BoundedCacheOptions>("permissions", o => ...)`.
-To build them entirely in code, use the overload that takes a factory:
+To build them entirely in code, use the overload that takes a factory; the options are then checked when
+the cache is created, at its first resolution:
 
 ```csharp
 builder.Services.AddStellaegisBoundedCache("permissions", _ => new BoundedCacheOptions { SizeLimit = 10_000 });
@@ -164,8 +180,9 @@ it is itself disposed.
 
 ## Metrics
 
-Every cache publishes four instruments on the meter `Stellaegis.Caching`, each tagged with
-`cache.name`, whose value is the cache's name:
+One meter for the process, `Stellaegis.Caching`, publishes four instruments; each measurement is tagged
+with `cache.name`, the name of the cache it reports, and a disposed cache stops reporting. Give each cache
+its own name: two live caches of the same name report under the same tag.
 
 | Instrument | Kind | Meaning |
 | --- | --- | --- |

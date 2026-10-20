@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using Microsoft.Extensions.Caching.Memory;
@@ -23,9 +24,14 @@ namespace Stellaegis.Caching;
 /// radius of a missed invalidation, so it can be long once the size is bounded.
 /// </para>
 /// <para>
-/// Metrics are emitted on the <c>Stellaegis.Caching</c> meter, each tagged with <c>cache.name</c>:
-/// <c>stellaegis.cache.entries</c>, <c>stellaegis.cache.hits</c>, <c>stellaegis.cache.misses</c>,
-/// <c>stellaegis.cache.evictions</c>.
+/// The cache knows nothing of compartments: a key is a string. An application with compartments puts the
+/// space in the key, <c>$"{space.ToSegment()}:sku:{sku}"</c>, from the first day — a key without it is
+/// shared between compartments the day the application takes a second one, without an error.
+/// </para>
+/// <para>
+/// Metrics are emitted on the <c>Stellaegis.Caching</c> meter, one for the process, each measurement
+/// tagged with <c>cache.name</c>: <c>stellaegis.cache.entries</c>, <c>stellaegis.cache.hits</c>,
+/// <c>stellaegis.cache.misses</c>, <c>stellaegis.cache.evictions</c>. A disposed cache stops reporting.
 /// </para>
 /// </remarks>
 public sealed class BoundedCache : IDisposable
@@ -33,31 +39,47 @@ public sealed class BoundedCache : IDisposable
     /// <summary>The meter name under which all bounded caches publish their instruments.</summary>
     public const string MeterName = "Stellaegis.Caching";
 
+    // One meter and one set of instruments for the process, observing every live cache: a meter per cache
+    // would publish as many homonymous instruments as there are caches, and keep observing a disposed one.
+    private static readonly Meter Meter = new(MeterName);
+    private static readonly ConcurrentDictionary<BoundedCache, byte> Live = new(ReferenceEqualityComparer.Instance);
+
+    static BoundedCache()
+    {
+        Meter.CreateObservableGauge(
+            "stellaegis.cache.entries", () => Observe(cache => cache.GetStatistics()?.CurrentEntryCount ?? 0), unit: "{entry}",
+            description: "Number of entries currently held by the bounded cache.");
+        Meter.CreateObservableCounter(
+            "stellaegis.cache.hits", () => Observe(cache => cache.GetStatistics()?.TotalHits ?? 0), unit: "{hit}",
+            description: "Total cache hits since the cache was created.");
+        Meter.CreateObservableCounter(
+            "stellaegis.cache.misses", () => Observe(cache => cache.GetStatistics()?.TotalMisses ?? 0), unit: "{miss}",
+            description: "Total cache misses since the cache was created.");
+        Meter.CreateObservableCounter(
+            "stellaegis.cache.evictions", () => Observe(cache => cache.EvictionCount), unit: "{eviction}",
+            description: "Total entries evicted for capacity, writes dropped by a full cache included, since the cache was created.");
+    }
+
     private readonly MemoryCache _cache;
     private readonly BoundedCacheOptions _options;
-    private readonly Meter _meter;
     private readonly KeyValuePair<string, object?> _nameTag;
     private long _evictions;
+    private volatile bool _disposed;
 
     /// <summary>Creates a bounded cache named <paramref name="name"/> from <paramref name="options"/>.</summary>
     /// <param name="name">Identifier used as the <c>cache.name</c> metric tag.</param>
     /// <param name="options">Size, TTL, and auto-sizing configuration.</param>
     /// <exception cref="ArgumentException">
-    /// The effective bound and <see cref="BoundedCacheOptions.CompactionPercentage"/> would remove no entry
-    /// per compaction, which would leave a full cache refusing writes until its entries expire.
+    /// The options do not hold (<see cref="BoundedCacheOptions.FindError"/>): a bound and a
+    /// <see cref="BoundedCacheOptions.CompactionPercentage"/> that would remove no entry per compaction, for instance.
     /// </exception>
     public BoundedCache(string name, BoundedCacheOptions options)
     {
         Name = Guard.NotWhiteSpace(name);
         _options = Guard.NotNull(options);
+        if (options.FindError() is { } error)
+            throw new ArgumentException($"Cache '{Name}': {error}", nameof(options));
         SizeLimit = ResolveSizeLimit(options);
-
-        // MemoryCache removes (int)(count × percentage) entries per compaction: below one, it removes
-        // only expired entries, and a full cache stays full.
-        var removedPerCompaction = (long)(SizeLimit * options.CompactionPercentage);
-        Guard.Satisfies(options, _ => removedPerCompaction >= 1,
-            $"Cache '{Name}': a SizeLimit of {SizeLimit} with a CompactionPercentage of {options.CompactionPercentage} "
-            + "removes no entry per compaction. Raise one of them.");
 
         _cache = new MemoryCache(new MemoryCacheOptions
         {
@@ -67,19 +89,7 @@ public sealed class BoundedCache : IDisposable
         });
 
         _nameTag = new KeyValuePair<string, object?>("cache.name", Name);
-        _meter = new Meter(MeterName);
-        _meter.CreateObservableGauge(
-            "stellaegis.cache.entries", ObserveEntries, unit: "{entry}",
-            description: "Number of entries currently held by the bounded cache.");
-        _meter.CreateObservableCounter(
-            "stellaegis.cache.hits", ObserveHits, unit: "{hit}",
-            description: "Total cache hits since the cache was created.");
-        _meter.CreateObservableCounter(
-            "stellaegis.cache.misses", ObserveMisses, unit: "{miss}",
-            description: "Total cache misses since the cache was created.");
-        _meter.CreateObservableCounter(
-            "stellaegis.cache.evictions", ObserveEvictions, unit: "{eviction}",
-            description: "Total entries evicted for capacity, writes dropped by a full cache included, since the cache was created.");
+        Live[this] = 0;
     }
 
     /// <summary>The cache name, used as the <c>cache.name</c> metric tag.</summary>
@@ -94,18 +104,31 @@ public sealed class BoundedCache : IDisposable
     /// <summary>Current underlying statistics (entry count, hits, misses), or <see langword="null"/>.</summary>
     public MemoryCacheStatistics? GetStatistics() => _cache.GetCurrentStatistics();
 
-    /// <summary>Attempts to read a cached value. Increments hit/miss statistics as a side effect.</summary>
+    /// <summary>
+    /// Attempts to read a cached value. Increments hit/miss statistics as a side effect. Returns
+    /// <see langword="false"/> when the key is absent. A value stored under the key that is not a
+    /// <typeparamref name="T"/> is a key shared by two consumers, and fails rather than reads as absent.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The value stored under <paramref name="key"/> is not a <typeparamref name="T"/>.</exception>
     public bool TryGet<T>(string key, [MaybeNullWhen(false)] out T value)
     {
         Guard.NotWhiteSpace(key);
-        if (_cache.TryGetValue(key, out var cached) && cached is T typed)
+        // A stored null reads as absent: there is nothing to hand out, and nothing to tell a type from.
+        if (!_cache.TryGetValue(key, out var cached) || cached is null)
+        {
+            value = default;
+            return false;
+        }
+
+        if (cached is T typed)
         {
             value = typed;
             return true;
         }
 
-        value = default;
-        return false;
+        throw new InvalidOperationException(
+            $"Cache '{Name}': the key '{key}' holds a {cached.GetType().Name}, and a {typeof(T).Name} is read. "
+            + "Two consumers share the key: give each its own.");
     }
 
     /// <summary>
@@ -175,18 +198,22 @@ public sealed class BoundedCache : IDisposable
             Interlocked.Increment(ref _evictions);
     }
 
-    private Measurement<long> ObserveEntries() => new(GetStatistics()?.CurrentEntryCount ?? 0, _nameTag);
-
-    private Measurement<long> ObserveHits() => new(GetStatistics()?.TotalHits ?? 0, _nameTag);
-
-    private Measurement<long> ObserveMisses() => new(GetStatistics()?.TotalMisses ?? 0, _nameTag);
-
-    private Measurement<long> ObserveEvictions() => new(EvictionCount, _nameTag);
+    private static IEnumerable<Measurement<long>> Observe(Func<BoundedCache, long> read)
+    {
+        foreach (var cache in Live.Keys)
+        {
+            if (!cache._disposed)
+                yield return new Measurement<long>(read(cache), cache._nameTag);
+        }
+    }
 
     /// <inheritdoc/>
     public void Dispose()
     {
+        if (_disposed)
+            return;
+        _disposed = true;
+        Live.TryRemove(this, out _);
         _cache.Dispose();
-        _meter.Dispose();
     }
 }
