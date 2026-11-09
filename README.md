@@ -201,7 +201,7 @@ statistics, and `EvictionCount` the number of capacity evictions.
 ## Building and testing
 
 ```sh
-dotnet test Stellaegis.Caching.slnx
+dotnet test --solution Stellaegis.Caching.slnx
 ```
 
 The tests need no external service.

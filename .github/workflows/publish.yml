@@ -38,7 +38,7 @@ jobs:
 
       # Quality gate: the whole solution must build and its tests pass before anything is pushed.
       - name: Test
-        run: dotnet test Stellaegis.Caching.slnx -c Release
+        run: dotnet test --solution Stellaegis.Caching.slnx -c Release --fail-skips on
 
       - name: Pack
         run: dotnet pack Stellaegis.Caching.slnx -c Release

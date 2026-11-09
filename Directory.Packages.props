@@ -11,9 +11,7 @@
     <PackageVersion Include="Stellaegis.Primitives" Version="5.0.0" />
     <PackageVersion Include="Stellaegis.Primitives.Hosting" Version="5.0.0" />
     <!-- Testing -->
-    <PackageVersion Include="xunit.v3" Version="3.2.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="xunit.v3" Version="4.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
     <!-- Tests only: a real generic host, to prove what the startup validation does -->
