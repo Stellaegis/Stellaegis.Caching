@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.1] — 2026-11-09
+
+On `Stellaegis.Primitives` 5.6.0 and Microsoft.Extensions 10.0.14, so that a host taking this library takes the
+version of Primitives that closes what a badly assembled host let through. Nothing changes in the library's code.
+
+### Changed
+
+- **`Stellaegis.Primitives` 5.6.0 and Microsoft.Extensions 10.0.14.**
+
+### Updating from 5.0.0
+
+Take the version. A host meets what the startup of Primitives 5.6.0 now refuses, listed with its way out in the
+CHANGELOG of Primitives, § *Updating from 5.5.0*; none of it concerns the cache.
+
 ## [5.0.0] — 2026-10-20
 
 The library joins the 5.0 line of the Stellaegis family: it takes `Stellaegis.Primitives` 5.0.0, whose 1.0.0 is
